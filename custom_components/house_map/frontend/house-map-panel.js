@@ -2538,7 +2538,7 @@ var $ = class extends z {
     :host {
       display: flex;
       flex-direction: column;
-      height: 100%;
+      height: 100vh;
       box-sizing: border-box;
       padding: 12px;
       gap: 8px;
@@ -2582,6 +2582,7 @@ var $ = class extends z {
       min-height: 0;
       display: grid;
       grid-template-columns: 280px 1fr 300px;
+      grid-template-rows: minmax(0, 1fr);
       gap: 8px;
     }
     hm-device-list,
