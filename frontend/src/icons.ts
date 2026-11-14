@@ -17,7 +17,7 @@ import {
   mdiWindowClosedVariant,
   mdiWeight,
 } from "@mdi/js";
-import type { HomeAssistant } from "./types";
+import type { HassEntity, HomeAssistant } from "./types";
 
 const BY_DEVICE_CLASS: Record<string, string> = {
   motion: mdiMotionSensor,
@@ -51,8 +51,26 @@ const CLASS_PRIORITY = [
   "vibration", "weight", "power", "energy", "temperature", "humidity",
 ];
 
+// device_id -> entities, rebuilt only when hass.entities changes identity.
+const entityIndex = new WeakMap<object, Map<string, HassEntity[]>>();
+
+function entitiesOf(hass: HomeAssistant, deviceId: string): HassEntity[] {
+  let index = entityIndex.get(hass.entities);
+  if (!index) {
+    index = new Map();
+    for (const e of Object.values(hass.entities)) {
+      if (!e.device_id) continue;
+      const list = index.get(e.device_id);
+      if (list) list.push(e);
+      else index.set(e.device_id, [e]);
+    }
+    entityIndex.set(hass.entities, index);
+  }
+  return index.get(deviceId) ?? [];
+}
+
 export function deviceIcon(hass: HomeAssistant, deviceId: string): string {
-  const entities = Object.values(hass.entities).filter((e) => e.device_id === deviceId);
+  const entities = entitiesOf(hass, deviceId);
   const classes = new Set<string>();
   for (const e of entities) {
     const dc = hass.states[e.entity_id]?.attributes?.device_class;
