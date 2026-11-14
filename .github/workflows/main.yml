@@ -1,0 +1,138 @@
+name: Main Pipeline
+
+# House Map ships no container image, so the shared release.yml (which
+# requires images) is replaced by a local release job built from the same
+# ci-pipeline composite actions: compute-version, release-notes, notify-discord.
+# The release asset house_map.zip is what HACS installs (hacs.json zip_release).
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: main-pipeline
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  build:
+    uses: FroeFam/ci-pipeline/.github/workflows/build-test.yml@v1
+    with:
+      language: python
+      python-version: '3.14'
+      python-matrix: '["3.14"]'
+      package-manager: uv
+      format-command: 'uv run --locked ruff format --check .'
+    secrets: inherit
+
+  compute-version:
+    name: compute-version
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      version: ${{ steps.compute.outputs.version }}
+      skip: ${{ steps.compute.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: compute
+        uses: FroeFam/ci-pipeline/actions/compute-version@v1
+        with:
+          github-token: ${{ github.token }}
+          initial-version: 0.1.0
+
+  notes:
+    name: notes
+    needs: compute-version
+    if: needs.compute-version.result == 'success' && needs.compute-version.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: FroeFam/ci-pipeline/actions/release-notes@v1
+        with:
+          github-token: ${{ github.token }}
+          version: ${{ needs.compute-version.outputs.version }}
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic-model: ${{ vars.ANTHROPIC_MODEL }}
+          output-path: release-notes.md
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-notes
+          path: release-notes.md
+
+  release:
+    name: release
+    needs: [compute-version, notes]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      VERSION: ${{ needs.compute-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Build house_map.zip with the release version
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $manifest = 'custom_components/house_map/manifest.json'
+          $json = Get-Content $manifest -Raw | ConvertFrom-Json -AsHashtable
+          $json.version = $env:VERSION
+          $json | ConvertTo-Json -Depth 5 | Set-Content $manifest
+          Push-Location custom_components/house_map
+          Compress-Archive -Path * -DestinationPath "$env:RUNNER_TEMP/house_map.zip"
+          Pop-Location
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-notes
+          path: ${{ runner.temp }}/notes
+
+      - name: Tag and create GitHub release
+        id: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -- custom_components/house_map/manifest.json
+          if (-not (git tag -l "v$env:VERSION")) {
+            git tag -a "v$env:VERSION" HEAD -m "Release v$env:VERSION"
+            git push origin "v$env:VERSION"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          gh release view "v$env:VERSION" *>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create "v$env:VERSION" "$env:RUNNER_TEMP/house_map.zip" `
+              --title "v$env:VERSION" --notes-file "$env:RUNNER_TEMP/notes/release-notes.md" --latest
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            'created=true' | Add-Content -Path $env:GITHUB_OUTPUT
+          }
+
+      - uses: FroeFam/ci-pipeline/actions/notify-discord@v1
+        if: steps.publish.outputs.created == 'true'
+        with:
+          webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          message: |
+            Released v${{ env.VERSION }} of ${{ github.repository }}
+            Release notes: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ env.VERSION }}
+            Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
