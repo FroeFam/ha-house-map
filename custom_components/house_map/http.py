@@ -77,7 +77,13 @@ class FloorSvgView(HomeAssistantView):
         except HouseMapError as err:
             return self.json_message(str(err), HTTPStatus.NOT_FOUND)
 
-        data = await request.content.read(MAX_SVG_BYTES + 1)
+        # StreamReader.read(n) returns only what has arrived so far; read to EOF.
+        buf = bytearray()
+        async for chunk in request.content.iter_chunked(64 * 1024):
+            buf.extend(chunk)
+            if len(buf) > MAX_SVG_BYTES:
+                return self.json_message("File is larger than 5 MB", HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+        data = bytes(buf)
         try:
             clean, viewbox = await hass.async_add_executor_job(sanitize_svg, data)
         except SvgError as err:

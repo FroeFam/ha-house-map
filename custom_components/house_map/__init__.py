@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 from homeassistant.components import frontend
@@ -56,6 +57,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.async_on_unload(hass.bus.async_listen(dr.EVENT_DEVICE_REGISTRY_UPDATED, _device_registry_updated))
 
     integration = await async_get_integration(hass, DOMAIN)
+    bundle = Path(__file__).parent / FRONTEND_DIR / FRONTEND_FILE
+    # Cache buster: changes whenever the bundle changes, even at the same version.
+    digest = await hass.async_add_executor_job(lambda: hashlib.sha256(bundle.read_bytes()).hexdigest()[:12])
     frontend.async_register_built_in_panel(
         hass,
         component_name="custom",
@@ -68,7 +72,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 "name": PANEL_COMPONENT,
                 "embed_iframe": False,
                 "trust_external": False,
-                "js_url": f"{STATIC_URL}/{FRONTEND_FILE}?v={integration.version}",
+                # The bundle is an ES module; js_url would load it as a classic script.
+                "module_url": f"{STATIC_URL}/{FRONTEND_FILE}?v={integration.version}-{digest}",
             }
         },
     )

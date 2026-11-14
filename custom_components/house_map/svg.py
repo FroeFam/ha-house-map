@@ -7,6 +7,7 @@ served by an authenticated view and could be opened directly in a browser.
 
 from __future__ import annotations
 
+import math
 import re
 import xml.etree.ElementTree as ET
 
@@ -51,6 +52,8 @@ def _parse_viewbox(root: ET.Element) -> list[float]:
         min_x, min_y = 0.0, 0.0
         width, height = float(width_m.group(1)), float(height_m.group(1))
         root.set("viewBox", f"0 0 {width:g} {height:g}")
+    if not all(math.isfinite(v) for v in (min_x, min_y, width, height)):
+        raise SvgError("viewBox values must be finite numbers")
     if width <= 0 or height <= 0:
         raise SvgError("viewBox width and height must be positive")
     return [min_x, min_y, width, height]
