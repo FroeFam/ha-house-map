@@ -17,7 +17,6 @@ concurrency:
 
 permissions:
   contents: write
-  packages: write
   pull-requests: read
 
 jobs:
@@ -55,7 +54,7 @@ jobs:
   notes:
     name: notes
     needs: compute-version
-    if: needs.compute-version.outputs.skip != 'true'
+    if: needs.compute-version.result == 'success' && needs.compute-version.outputs.skip != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -94,6 +93,7 @@ jobs:
 
       - name: Build house_map.zip with the release version
         run: |
+          $ErrorActionPreference = 'Stop'
           $manifest = 'custom_components/house_map/manifest.json'
           $json = Get-Content $manifest -Raw | ConvertFrom-Json -AsHashtable
           $json.version = $env:VERSION
@@ -108,6 +108,7 @@ jobs:
           path: ${{ runner.temp }}/notes
 
       - name: Tag and create GitHub release
+        id: publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -124,9 +125,11 @@ jobs:
             gh release create "v$env:VERSION" "$env:RUNNER_TEMP/house_map.zip" `
               --title "v$env:VERSION" --notes-file "$env:RUNNER_TEMP/notes/release-notes.md" --latest
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            'created=true' | Add-Content -Path $env:GITHUB_OUTPUT
           }
 
       - uses: FroeFam/ci-pipeline/actions/notify-discord@v1
+        if: steps.publish.outputs.created == 'true'
         with:
           webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
           message: |
