@@ -1,0 +1,13 @@
+get_placements:
+  fields:
+    floor:
+      example: "First Floor"
+      selector:
+        text:
+    area:
+      example: "kitchen"
+      selector:
+        area:
+    device_id:
+      selector:
+        device:

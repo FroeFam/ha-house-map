@@ -1,0 +1,39 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "House Map",
+        "description": "Adds a House Map item to the sidebar. Floors and floor plans are set up there."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "House Map is already set up."
+    }
+  },
+  "issues": {
+    "orphaned_devices": {
+      "title": "House Map has placed devices that no longer exist",
+      "description": "{count} device(s) placed on the House Map were removed from Home Assistant. Open House Map in the sidebar to review and remove them."
+    }
+  },
+  "services": {
+    "get_placements": {
+      "name": "Get placements",
+      "description": "Returns every placed device with its floor, area, position in plan units and feet, rotation and notes.",
+      "fields": {
+        "floor": {
+          "name": "Floor",
+          "description": "Only this floor (name or id)."
+        },
+        "area": {
+          "name": "Area",
+          "description": "Only devices in this area (id or name)."
+        },
+        "device_id": {
+          "name": "Device",
+          "description": "Only this device."
+        }
+      }
+    }
+  }
+}
