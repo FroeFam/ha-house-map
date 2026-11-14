@@ -54,7 +54,7 @@ jobs:
   notes:
     name: notes
     needs: compute-version
-    if: needs.compute-version.outputs.skip != 'true'
+    if: needs.compute-version.result == 'success' && needs.compute-version.outputs.skip != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
